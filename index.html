@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>YouTube Browser V2</title>
+<title>YouTube Browser V4</title>
 
 <style>
 body {
@@ -105,9 +105,9 @@ button {
 <div id="results"></div>
 
 <script>
-const API_KEY = "AIzaSyByjWVbBuoR2ocPK8b6E6OA9Ru6GCx13us"; // ⚠️ don't hardcode in real apps
+const API_KEY = "AIzaSyByjWVbBuoR2ocPK8b6E6OA9Ru6GCx13us";
 
-// -------------------- DOM --------------------
+// ---------------- DOM ----------------
 const els = {
     query: document.getElementById("query"),
     searchBtn: document.getElementById("searchBtn"),
@@ -116,21 +116,21 @@ const els = {
     player: document.getElementById("playerContainer"),
 };
 
-// -------------------- INIT --------------------
+// ---------------- INIT ----------------
 els.searchBtn.addEventListener("click", searchVideos);
-els.query.addEventListener("keydown", (e) => {
+els.query.addEventListener("keydown", e => {
     if (e.key === "Enter") searchVideos();
 });
 
-// -------------------- UTIL --------------------
+// ---------------- UTIL ----------------
 function escapeHtml(text = "") {
     const div = document.createElement("div");
     div.textContent = text;
     return div.innerHTML;
 }
 
-function setStatus(html) {
-    els.status.innerHTML = html;
+function setStatus(msg) {
+    els.status.innerHTML = msg;
 }
 
 function clearResults() {
@@ -141,38 +141,40 @@ function clearPlayer() {
     els.player.innerHTML = "";
 }
 
-// -------------------- PLAYER --------------------
+// ---------------- PLAYER (YOUR ORIGINAL STYLE) ----------------
 function loadVideo(videoId) {
     if (!videoId) return;
 
     els.player.innerHTML = `
-        <div style="position:relative;padding-bottom:56.25%;height:0;">
-            <iframe
-                src="https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0"
-                style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;"
-                allowfullscreen
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture">
-            </iframe>
-        </div>
+<div style="left: 0; width: 100%; height: 0; position: relative; padding-bottom: 56.25%;">
+    <iframe
+        src="https://www.youtube.com/embed/${videoId}?rel=0&autoplay=1"
+        style="top: 0; left: 0; width: 100%; height: 100%; position: absolute; border: 0;"
+        allowfullscreen
+        scrolling="no"
+        allow="accelerometer *; clipboard-write *; encrypted-media *; gyroscope *; picture-in-picture *; web-share *;"
+        referrerpolicy="strict-origin">
+    </iframe>
+</div>
     `;
 
     window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-// -------------------- COMPONENTS --------------------
-function createVideoCard(video, onChannelClick, onVideoClick) {
+// ---------------- CARD ----------------
+function createCard(video, onChannelClick, onVideoClick) {
     const videoId = video?.id?.videoId;
     if (!videoId) return null;
 
-    const snippet = video.snippet || {};
-    const title = snippet.title || "Untitled";
-    const channelTitle = snippet.channelTitle || "Unknown channel";
-    const channelId = snippet.channelId || "";
+    const s = video.snippet || {};
+    const title = s.title || "Untitled";
+    const channel = s.channelTitle || "Unknown";
+    const channelId = s.channelId || "";
 
     const thumb =
-        snippet.thumbnails?.high?.url ||
-        snippet.thumbnails?.medium?.url ||
-        snippet.thumbnails?.default?.url ||
+        s.thumbnails?.high?.url ||
+        s.thumbnails?.medium?.url ||
+        s.thumbnails?.default?.url ||
         "";
 
     const card = document.createElement("div");
@@ -182,7 +184,6 @@ function createVideoCard(video, onChannelClick, onVideoClick) {
     img.className = "thumbnail";
     img.src = thumb;
     img.alt = title;
-
     img.addEventListener("click", () => onVideoClick(videoId));
 
     const info = document.createElement("div");
@@ -194,10 +195,10 @@ function createVideoCard(video, onChannelClick, onVideoClick) {
 
     const channelEl = document.createElement("div");
     channelEl.className = "channel";
-    channelEl.textContent = channelTitle;
+    channelEl.textContent = channel;
 
     channelEl.addEventListener("click", () => {
-        if (channelId) onChannelClick(channelId, channelTitle);
+        if (channelId) onChannelClick(channelId, channel);
     });
 
     const btn = document.createElement("button");
@@ -211,19 +212,19 @@ function createVideoCard(video, onChannelClick, onVideoClick) {
     return card;
 }
 
-// -------------------- API --------------------
+// ---------------- API ----------------
 async function fetchJSON(url) {
     const res = await fetch(url);
     const data = await res.json();
 
     if (!res.ok) {
-        throw new Error(data?.error?.message || "API request failed");
+        throw new Error(data?.error?.message || "API error");
     }
 
     return data;
 }
 
-// -------------------- SEARCH --------------------
+// ---------------- SEARCH ----------------
 async function searchVideos() {
     const query = els.query.value.trim();
     if (!query) return;
@@ -241,19 +242,17 @@ async function searchVideos() {
 
         const data = await fetchJSON(url);
 
-        renderResults(data.items);
+        render(data.items);
         setStatus("");
 
     } catch (err) {
         console.error(err);
-        setStatus("<p>Failed to load videos. Check console for details.</p>");
+        setStatus("<p>Error loading videos.</p>");
     }
 }
 
-// -------------------- CHANNEL --------------------
+// ---------------- CHANNEL ----------------
 async function loadChannel(channelId, channelName) {
-    if (!channelId) return;
-
     setStatus(`<div class="loading">Loading ${escapeHtml(channelName)}...</div>`);
     clearResults();
     clearPlayer();
@@ -268,16 +267,16 @@ async function loadChannel(channelId, channelName) {
         const data = await fetchJSON(url);
 
         setStatus(`<h2>${escapeHtml(channelName)}</h2>`);
-        renderResults(data.items);
+        render(data.items);
 
     } catch (err) {
         console.error(err);
-        setStatus("<p>Failed to load channel videos.</p>");
+        setStatus("<p>Error loading channel.</p>");
     }
 }
 
-// -------------------- RENDER --------------------
-function renderResults(items = []) {
+// ---------------- RENDER ----------------
+function render(items = []) {
     clearResults();
 
     if (!Array.isArray(items) || items.length === 0) {
@@ -285,19 +284,14 @@ function renderResults(items = []) {
         return;
     }
 
-    const fragment = document.createDocumentFragment();
+    const frag = document.createDocumentFragment();
 
-    items.forEach(video => {
-        const card = createVideoCard(
-            video,
-            loadChannel,
-            loadVideo
-        );
-
-        if (card) fragment.appendChild(card);
+    items.forEach(v => {
+        const card = createCard(v, loadChannel, loadVideo);
+        if (card) frag.appendChild(card);
     });
 
-    els.results.appendChild(fragment);
+    els.results.appendChild(frag);
 }
 </script>
 
