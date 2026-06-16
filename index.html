@@ -1,309 +1,304 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>YouTube Browser V67</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>YouTube Browser V2</title>
 
 <style>
-body{
-    font-family:Arial,sans-serif;
-    margin:20px;
-    background:#f5f5f5;
+body {
+    font-family: Arial, sans-serif;
+    margin: 20px;
+    background: #f5f5f5;
 }
 
-h1{
-    text-align:center;
+h1 {
+    text-align: center;
 }
 
-.search-container{
-    text-align:center;
-    margin-bottom:20px;
+.search-container {
+    text-align: center;
+    margin-bottom: 20px;
 }
 
-input{
-    width:60%;
-    max-width:500px;
-    padding:10px;
-    font-size:16px;
+input {
+    width: 60%;
+    max-width: 500px;
+    padding: 10px;
+    font-size: 16px;
 }
 
-button{
-    padding:10px 15px;
-    cursor:pointer;
+button {
+    padding: 10px 15px;
+    cursor: pointer;
 }
 
-#playerContainer{
-    max-width:1000px;
-    margin:0 auto 25px auto;
+#playerContainer {
+    max-width: 1000px;
+    margin: 0 auto 25px auto;
 }
 
-#results{
-    display:grid;
-    grid-template-columns:repeat(auto-fill,minmax(320px,1fr));
-    gap:20px;
+#results {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 20px;
 }
 
-.video-card{
-    background:white;
-    border-radius:10px;
-    overflow:hidden;
-    box-shadow:0 2px 8px rgba(0,0,0,.15);
+.video-card {
+    background: white;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,.15);
 }
 
-.thumbnail{
-    width:100%;
-    cursor:pointer;
+.thumbnail {
+    width: 100%;
+    cursor: pointer;
+    display: block;
 }
 
-.video-info{
-    padding:12px;
+.video-info {
+    padding: 12px;
 }
 
-.video-title{
-    font-size:15px;
-    font-weight:bold;
-    margin-bottom:8px;
+.video-title {
+    font-size: 15px;
+    font-weight: bold;
+    margin-bottom: 8px;
 }
 
-.channel{
-    color:#666;
-    margin-bottom:10px;
+.channel {
+    color: #0066cc;
+    cursor: pointer;
+    margin-bottom: 10px;
 }
 
-.watch-btn{
-    width:100%;
-    border:none;
-    background:#cc0000;
-    color:white;
-    padding:10px;
-    border-radius:6px;
-    cursor:pointer;
+.watch-btn {
+    width: 100%;
+    border: none;
+    background: #cc0000;
+    color: white;
+    padding: 10px;
+    border-radius: 6px;
+    cursor: pointer;
 }
 
-.watch-btn:hover{
-    opacity:.9;
-}
-
-.loading{
-    text-align:center;
-    font-size:18px;
-    margin-top:20px;
+.loading {
+    text-align: center;
+    font-size: 18px;
+    margin-top: 20px;
 }
 </style>
 </head>
+
 <body>
 
 <h1>YouTube Browser</h1>
 
 <div class="search-container">
-    <input
-        id="query"
-        type="text"
-        placeholder="Search YouTube..."
-        onkeydown="if(event.key==='Enter') searchVideos();"
-    >
-    <button onclick="searchVideos()">Search</button>
+    <input id="query" placeholder="Search YouTube..." />
+    <button id="searchBtn">Search</button>
 </div>
 
 <div id="playerContainer"></div>
-
 <div id="status"></div>
 <div id="results"></div>
 
 <script>
+const API_KEY = "AIzaSyByjWVbBuoR2ocPK8b6E6OA9Ru6GCx13us"; // ⚠️ don't hardcode in real apps
 
-const API_KEY = "AIzaSyByjWVbBuoR2ocPK8b6E6OA9Ru6GCx13us";
+// -------------------- DOM --------------------
+const els = {
+    query: document.getElementById("query"),
+    searchBtn: document.getElementById("searchBtn"),
+    results: document.getElementById("results"),
+    status: document.getElementById("status"),
+    player: document.getElementById("playerContainer"),
+};
 
-function escapeHtml(text){
+// -------------------- INIT --------------------
+els.searchBtn.addEventListener("click", searchVideos);
+els.query.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") searchVideos();
+});
+
+// -------------------- UTIL --------------------
+function escapeHtml(text = "") {
     const div = document.createElement("div");
     div.textContent = text;
     return div.innerHTML;
 }
 
-function loadVideo(videoId){
+function setStatus(html) {
+    els.status.innerHTML = html;
+}
 
-    document.getElementById("playerContainer").innerHTML = `
-        <div style="left:0;width:100%;height:0;position:relative;padding-bottom:56.25%;">
+function clearResults() {
+    els.results.innerHTML = "";
+}
+
+function clearPlayer() {
+    els.player.innerHTML = "";
+}
+
+// -------------------- PLAYER --------------------
+function loadVideo(videoId) {
+    if (!videoId) return;
+
+    els.player.innerHTML = `
+        <div style="position:relative;padding-bottom:56.25%;height:0;">
             <iframe
                 src="https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0"
-                style="top:0;left:0;width:100%;height:100%;position:absolute;border:0;"
+                style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;"
                 allowfullscreen
-                scrolling="no"
-                allow="accelerometer *; clipboard-write *; encrypted-media *; gyroscope *; picture-in-picture *; web-share *;"
-                referrerpolicy="strict-origin">
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture">
             </iframe>
         </div>
     `;
 
-    window.scrollTo({
-        top: 0,
-        behavior: "smooth"
+    window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+// -------------------- COMPONENTS --------------------
+function createVideoCard(video, onChannelClick, onVideoClick) {
+    const videoId = video?.id?.videoId;
+    if (!videoId) return null;
+
+    const snippet = video.snippet || {};
+    const title = snippet.title || "Untitled";
+    const channelTitle = snippet.channelTitle || "Unknown channel";
+    const channelId = snippet.channelId || "";
+
+    const thumb =
+        snippet.thumbnails?.high?.url ||
+        snippet.thumbnails?.medium?.url ||
+        snippet.thumbnails?.default?.url ||
+        "";
+
+    const card = document.createElement("div");
+    card.className = "video-card";
+
+    const img = document.createElement("img");
+    img.className = "thumbnail";
+    img.src = thumb;
+    img.alt = title;
+
+    img.addEventListener("click", () => onVideoClick(videoId));
+
+    const info = document.createElement("div");
+    info.className = "video-info";
+
+    const titleEl = document.createElement("div");
+    titleEl.className = "video-title";
+    titleEl.textContent = title;
+
+    const channelEl = document.createElement("div");
+    channelEl.className = "channel";
+    channelEl.textContent = channelTitle;
+
+    channelEl.addEventListener("click", () => {
+        if (channelId) onChannelClick(channelId, channelTitle);
     });
+
+    const btn = document.createElement("button");
+    btn.className = "watch-btn";
+    btn.textContent = "Watch Here";
+    btn.addEventListener("click", () => onVideoClick(videoId));
+
+    info.append(titleEl, channelEl, btn);
+    card.append(img, info);
+
+    return card;
 }
 
-async function searchVideos(){
+// -------------------- API --------------------
+async function fetchJSON(url) {
+    const res = await fetch(url);
+    const data = await res.json();
 
-    const query = document.getElementById("query").value.trim();
+    if (!res.ok) {
+        throw new Error(data?.error?.message || "API request failed");
+    }
 
-    if(!query) return;
+    return data;
+}
 
-    document.getElementById("status").innerHTML =
-        '<div class="loading">Searching...</div>';
+// -------------------- SEARCH --------------------
+async function searchVideos() {
+    const query = els.query.value.trim();
+    if (!query) return;
 
-    document.getElementById("results").innerHTML = "";
+    setStatus('<div class="loading">Searching...</div>');
+    clearResults();
+    clearPlayer();
 
-    try{
+    try {
+        const url =
+            `https://www.googleapis.com/youtube/v3/search` +
+            `?part=snippet&type=video&maxResults=24` +
+            `&q=${encodeURIComponent(query)}` +
+            `&key=${API_KEY}`;
 
-        const response = await fetch(
-            `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=24&q=${encodeURIComponent(query)}&key=${API_KEY}`
-        );
+        const data = await fetchJSON(url);
 
-        const data = await response.json();
+        renderResults(data.items);
+        setStatus("");
 
-        document.getElementById("status").innerHTML = "";
-
-        if(!data.items || data.items.length === 0){
-            document.getElementById("results").innerHTML =
-                "<p>No videos found.</p>";
-            return;
-        }
-
-        const results = document.getElementById("results");
-
-        data.items.forEach(video => {
-
-            const videoId = video.id.videoId;
-            const title = video.snippet.title;
-            const channel = video.snippet.channelTitle;
-            const channelId = video.snippet.channelId;
-
-            const thumb =
-                video.snippet.thumbnails.high?.url ||
-                video.snippet.thumbnails.medium?.url ||
-                video.snippet.thumbnails.default.url;
-
-            const card = document.createElement("div");
-
-            card.className = "video-card";
-
-            card.innerHTML = `
-                <img
-                    class="thumbnail"
-                    src="${thumb}"
-                    alt=""
-                    onclick="loadVideo('${videoId}')"
-                >
-
-                <div class="video-info">
-
-                    <div class="video-title">
-                        ${escapeHtml(title)}
-                    </div>
-
-                    <div
-    class="channel"
-    style="cursor:pointer;color:#0066cc;"
-    onclick="loadChannel('${channelId}', '${escapeHtml(channel)}')">
-    ${escapeHtml(channel)}
-</div>
-
-                    <button
-                        class="watch-btn"
-                        onclick="loadVideo('${videoId}')">
-                        Watch Here
-                    </button>
-
-                </div>
-            `;
-
-            results.appendChild(card);
-        });
-
-    }catch(error){
-
-        console.error(error);
-
-        document.getElementById("status").innerHTML =
-            "<p>Error loading videos. Check your API key.</p>";
+    } catch (err) {
+        console.error(err);
+        setStatus("<p>Failed to load videos. Check console for details.</p>");
     }
 }
 
-async function loadChannel(channelId, channelName){
+// -------------------- CHANNEL --------------------
+async function loadChannel(channelId, channelName) {
+    if (!channelId) return;
 
-    document.getElementById("status").innerHTML =
-        `<div class="loading">Loading videos from ${channelName}...</div>`;
+    setStatus(`<div class="loading">Loading ${escapeHtml(channelName)}...</div>`);
+    clearResults();
+    clearPlayer();
 
-    document.getElementById("results").innerHTML = "";
+    try {
+        const url =
+            `https://www.googleapis.com/youtube/v3/search` +
+            `?part=snippet&channelId=${channelId}` +
+            `&order=date&type=video&maxResults=24` +
+            `&key=${API_KEY}`;
 
-    try{
+        const data = await fetchJSON(url);
 
-        const response = await fetch(
-            `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&maxResults=24&order=date&type=video&key=${API_KEY}`
-        );
+        setStatus(`<h2>${escapeHtml(channelName)}</h2>`);
+        renderResults(data.items);
 
-        const data = await response.json();
-
-        document.getElementById("status").innerHTML =
-            `<h2>${channelName}</h2>`;
-
-        const results = document.getElementById("results");
-
-        data.items.forEach(video => {
-
-            const videoId = video.id.videoId;
-            const title = video.snippet.title;
-            const channel = video.snippet.channelTitle;
-            const thumb =
-                video.snippet.thumbnails.high?.url ||
-                video.snippet.thumbnails.medium?.url ||
-                video.snippet.thumbnails.default.url;
-
-            const card = document.createElement("div");
-
-            card.className = "video-card";
-
-            card.innerHTML = `
-                <img
-                    class="thumbnail"
-                    src="${thumb}"
-                    onclick="loadVideo('${videoId}')"
-                >
-
-                <div class="video-info">
-
-                    <div class="video-title">
-                        ${escapeHtml(title)}
-                    </div>
-
-                    <div
-                        class="channel"
-                        style="cursor:pointer;color:#0066cc;"
-                        onclick="loadChannel('${channelId}', '${escapeHtml(channel)}')">
-                        ${escapeHtml(channel)}
-                    </div>
-
-                    <button
-                        class="watch-btn"
-                        onclick="loadVideo('${videoId}')">
-                        Watch Here
-                    </button>
-
-                </div>
-            `;
-
-            results.appendChild(card);
-        });
-
-    }catch(error){
-
-        console.error(error);
-
-        document.getElementById("status").innerHTML =
-            "<p>Error loading channel videos.</p>";
+    } catch (err) {
+        console.error(err);
+        setStatus("<p>Failed to load channel videos.</p>");
     }
 }
 
+// -------------------- RENDER --------------------
+function renderResults(items = []) {
+    clearResults();
+
+    if (!Array.isArray(items) || items.length === 0) {
+        els.results.innerHTML = "<p>No videos found.</p>";
+        return;
+    }
+
+    const fragment = document.createDocumentFragment();
+
+    items.forEach(video => {
+        const card = createVideoCard(
+            video,
+            loadChannel,
+            loadVideo
+        );
+
+        if (card) fragment.appendChild(card);
+    });
+
+    els.results.appendChild(fragment);
+}
 </script>
 
 </body>
