@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>YouTube Browser V4</title>
+<title>YouTube Browser V5</title>
 
 <style>
 body {
@@ -116,10 +116,25 @@ const els = {
     player: document.getElementById("playerContainer"),
 };
 
+// ---------------- STATE ----------------
+let nextPageToken = null;
+let prevPageToken = null;
+let lastQuery = "";
+let lastChannelId = "";
+let lastChannelName = "";
+let lastMode = "search";
+
 // ---------------- INIT ----------------
-els.searchBtn.addEventListener("click", searchVideos);
+els.searchBtn.addEventListener("click", () => {
+    lastQuery = els.query.value.trim();
+    searchVideos();
+});
+
 els.query.addEventListener("keydown", e => {
-    if (e.key === "Enter") searchVideos();
+    if (e.key === "Enter") {
+        lastQuery = els.query.value.trim();
+        searchVideos();
+    }
 });
 
 // ---------------- UTIL ----------------
@@ -141,7 +156,7 @@ function clearPlayer() {
     els.player.innerHTML = "";
 }
 
-// ---------------- PLAYER (YOUR ORIGINAL STYLE) ----------------
+// ---------------- PLAYER (your style preserved) ----------------
 function loadVideo(videoId) {
     if (!videoId) return;
 
@@ -161,57 +176,6 @@ function loadVideo(videoId) {
     window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-// ---------------- CARD ----------------
-function createCard(video, onChannelClick, onVideoClick) {
-    const videoId = video?.id?.videoId;
-    if (!videoId) return null;
-
-    const s = video.snippet || {};
-    const title = s.title || "Untitled";
-    const channel = s.channelTitle || "Unknown";
-    const channelId = s.channelId || "";
-
-    const thumb =
-        s.thumbnails?.high?.url ||
-        s.thumbnails?.medium?.url ||
-        s.thumbnails?.default?.url ||
-        "";
-
-    const card = document.createElement("div");
-    card.className = "video-card";
-
-    const img = document.createElement("img");
-    img.className = "thumbnail";
-    img.src = thumb;
-    img.alt = title;
-    img.addEventListener("click", () => onVideoClick(videoId));
-
-    const info = document.createElement("div");
-    info.className = "video-info";
-
-    const titleEl = document.createElement("div");
-    titleEl.className = "video-title";
-    titleEl.textContent = title;
-
-    const channelEl = document.createElement("div");
-    channelEl.className = "channel";
-    channelEl.textContent = channel;
-
-    channelEl.addEventListener("click", () => {
-        if (channelId) onChannelClick(channelId, channel);
-    });
-
-    const btn = document.createElement("button");
-    btn.className = "watch-btn";
-    btn.textContent = "Watch Here";
-    btn.addEventListener("click", () => onVideoClick(videoId));
-
-    info.append(titleEl, channelEl, btn);
-    card.append(img, info);
-
-    return card;
-}
-
 // ---------------- API ----------------
 async function fetchJSON(url) {
     const res = await fetch(url);
@@ -225,24 +189,32 @@ async function fetchJSON(url) {
 }
 
 // ---------------- SEARCH ----------------
-async function searchVideos() {
-    const query = els.query.value.trim();
-    if (!query) return;
+async function searchVideos(pageToken = "") {
+
+    lastMode = "search";
 
     setStatus('<div class="loading">Searching...</div>');
     clearResults();
     clearPlayer();
 
     try {
-        const url =
+
+        let url =
             `https://www.googleapis.com/youtube/v3/search` +
             `?part=snippet&type=video&maxResults=24` +
-            `&q=${encodeURIComponent(query)}` +
+            `&q=${encodeURIComponent(lastQuery)}` +
             `&key=${API_KEY}`;
+
+        if (pageToken) url += `&pageToken=${pageToken}`;
 
         const data = await fetchJSON(url);
 
+        nextPageToken = data.nextPageToken || null;
+        prevPageToken = data.prevPageToken || null;
+
         render(data.items);
+        renderPagination();
+
         setStatus("");
 
     } catch (err) {
@@ -252,22 +224,35 @@ async function searchVideos() {
 }
 
 // ---------------- CHANNEL ----------------
-async function loadChannel(channelId, channelName) {
+async function loadChannel(channelId, channelName, pageToken = "") {
+
+    lastMode = "channel";
+    lastChannelId = channelId;
+    lastChannelName = channelName;
+
     setStatus(`<div class="loading">Loading ${escapeHtml(channelName)}...</div>`);
     clearResults();
     clearPlayer();
 
     try {
-        const url =
+
+        let url =
             `https://www.googleapis.com/youtube/v3/search` +
             `?part=snippet&channelId=${channelId}` +
             `&order=date&type=video&maxResults=24` +
             `&key=${API_KEY}`;
 
+        if (pageToken) url += `&pageToken=${pageToken}`;
+
         const data = await fetchJSON(url);
 
+        nextPageToken = data.nextPageToken || null;
+        prevPageToken = data.prevPageToken || null;
+
         setStatus(`<h2>${escapeHtml(channelName)}</h2>`);
+
         render(data.items);
+        renderPagination();
 
     } catch (err) {
         console.error(err);
@@ -275,8 +260,51 @@ async function loadChannel(channelId, channelName) {
     }
 }
 
+// ---------------- CARD RENDER ----------------
+function createCard(video) {
+
+    const videoId = video?.id?.videoId;
+    if (!videoId) return null;
+
+    const s = video.snippet || {};
+
+    const card = document.createElement("div");
+    card.className = "video-card";
+
+    const img = document.createElement("img");
+    img.className = "thumbnail";
+    img.src = s.thumbnails?.high?.url || "";
+    img.addEventListener("click", () => loadVideo(videoId));
+
+    const info = document.createElement("div");
+    info.className = "video-info";
+
+    const title = document.createElement("div");
+    title.className = "video-title";
+    title.textContent = s.title || "";
+
+    const channel = document.createElement("div");
+    channel.className = "channel";
+    channel.textContent = s.channelTitle || "";
+
+    channel.addEventListener("click", () => {
+        loadChannel(s.channelId, s.channelTitle);
+    });
+
+    const btn = document.createElement("button");
+    btn.className = "watch-btn";
+    btn.textContent = "Watch Here";
+    btn.addEventListener("click", () => loadVideo(videoId));
+
+    info.append(title, channel, btn);
+    card.append(img, info);
+
+    return card;
+}
+
 // ---------------- RENDER ----------------
 function render(items = []) {
+
     clearResults();
 
     if (!Array.isArray(items) || items.length === 0) {
@@ -287,11 +315,52 @@ function render(items = []) {
     const frag = document.createDocumentFragment();
 
     items.forEach(v => {
-        const card = createCard(v, loadChannel, loadVideo);
+        const card = createCard(v);
         if (card) frag.appendChild(card);
     });
 
     els.results.appendChild(frag);
+}
+
+// ---------------- PAGINATION ----------------
+function renderPagination() {
+
+    const div = document.createElement("div");
+    div.style.textAlign = "center";
+    div.style.marginTop = "20px";
+
+    if (prevPageToken) {
+        const prev = document.createElement("button");
+        prev.textContent = "⬅ Prev";
+
+        prev.onclick = () => {
+            if (lastMode === "search") {
+                searchVideos(prevPageToken);
+            } else {
+                loadChannel(lastChannelId, lastChannelName, prevPageToken);
+            }
+        };
+
+        div.appendChild(prev);
+    }
+
+    if (nextPageToken) {
+        const next = document.createElement("button");
+        next.textContent = "Next ➡";
+        next.style.marginLeft = "10px";
+
+        next.onclick = () => {
+            if (lastMode === "search") {
+                searchVideos(nextPageToken);
+            } else {
+                loadChannel(lastChannelId, lastChannelName, nextPageToken);
+            }
+        };
+
+        div.appendChild(next);
+    }
+
+    els.results.appendChild(div);
 }
 </script>
 
