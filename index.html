@@ -200,7 +200,85 @@ async function searchVideos(){
                         ${escapeHtml(title)}
                     </div>
 
-                    <div class="channel">
+                    <div
+    class="channel"
+    style="cursor:pointer;color:#0066cc;"
+    onclick="loadChannel('${channelId}', '${escapeHtml(channel)}')">
+    ${escapeHtml(channel)}
+</div>
+
+                    <button
+                        class="watch-btn"
+                        onclick="loadVideo('${videoId}')">
+                        Watch Here
+                    </button>
+
+                </div>
+            `;
+
+            results.appendChild(card);
+        });
+
+    }catch(error){
+
+        console.error(error);
+
+        document.getElementById("status").innerHTML =
+            "<p>Error loading videos. Check your API key.</p>";
+    }
+}
+
+async function loadChannel(channelId, channelName){
+
+    document.getElementById("status").innerHTML =
+        `<div class="loading">Loading videos from ${channelName}...</div>`;
+
+    document.getElementById("results").innerHTML = "";
+
+    try{
+
+        const response = await fetch(
+            `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&maxResults=24&order=date&type=video&key=${API_KEY}`
+        );
+
+        const data = await response.json();
+
+        document.getElementById("status").innerHTML =
+            `<h2>${channelName}</h2>`;
+
+        const results = document.getElementById("results");
+
+        data.items.forEach(video => {
+
+            const videoId = video.id.videoId;
+            const title = video.snippet.title;
+            const channel = video.snippet.channelTitle;
+            const thumb =
+                video.snippet.thumbnails.high?.url ||
+                video.snippet.thumbnails.medium?.url ||
+                video.snippet.thumbnails.default.url;
+
+            const card = document.createElement("div");
+
+            card.className = "video-card";
+
+            card.innerHTML = `
+                <img
+                    class="thumbnail"
+                    src="${thumb}"
+                    onclick="loadVideo('${videoId}')"
+                >
+
+                <div class="video-info">
+
+                    <div class="video-title">
+                        ${escapeHtml(title)}
+                    </div>
+
+                    <div
+                        class="channel"
+                        style="cursor:pointer;color:#0066cc;"
+                        onclick="loadChannel('${channelId}', '${escapeHtml(channel)}')">
                         ${escapeHtml(channel)}
                     </div>
 
@@ -221,7 +299,7 @@ async function searchVideos(){
         console.error(error);
 
         document.getElementById("status").innerHTML =
-            "<p>Error loading videos. Check your API key.</p>";
+            "<p>Error loading channel videos.</p>";
     }
 }
 
