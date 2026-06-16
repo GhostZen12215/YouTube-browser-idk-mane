@@ -176,6 +176,7 @@ async function searchVideos(){
             const videoId = video.id.videoId;
             const title = video.snippet.title;
             const channel = video.snippet.channelTitle;
+            const channelId = video.snippet.channelId;
 
             const thumb =
                 video.snippet.thumbnails.high?.url ||
