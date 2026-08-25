@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>YouTube Browser V7</title>
+<title>YouTube Browser V8</title>
 
 <style>
 body {
@@ -14,6 +14,26 @@ body {
 
 h1 {
     text-align: center;
+}
+
+.top-nav {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.nav-btn {
+    border: none;
+    background: #333;
+    color: white;
+    padding: 10px 18px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.nav-btn.active {
+    background: #cc0000;
 }
 
 .search-container {
@@ -88,12 +108,37 @@ button {
     font-size: 18px;
     margin-top: 20px;
 }
+
+.home-title {
+    text-align: center;
+    margin: 25px 0;
+}
+
+.empty-home {
+    text-align: center;
+    padding: 40px 20px;
+    background: white;
+    border-radius: 10px;
+}
+
+.clear-history {
+    display: block;
+    margin: 25px auto;
+    background: #555;
+    color: white;
+    border: none;
+    border-radius: 6px;
+}
 </style>
 </head>
 
 <body>
 
 <h1>YouTube Browser</h1>
+
+<div class="top-nav">
+    <button id="homeBtn" class="nav-btn active">🏠 Home</button>
+</div>
 
 <div class="search-container">
     <input id="query" placeholder="Search YouTube..." />
@@ -108,92 +153,547 @@ button {
 const API_KEY = "AIzaSyByjWVbBuoR2ocPK8b6E6OA9Ru6GCx13us";
 
 // ---------------- DOM ----------------
+
 const els = {
     query: document.getElementById("query"),
     searchBtn: document.getElementById("searchBtn"),
+    homeBtn: document.getElementById("homeBtn"),
     results: document.getElementById("results"),
     status: document.getElementById("status"),
     player: document.getElementById("playerContainer"),
 };
 
 // ---------------- STATE ----------------
+
 let nextPageToken = null;
 let prevPageToken = null;
+
 let lastQuery = "";
 let lastChannelId = "";
 let lastChannelName = "";
-let lastMode = "search";
+let lastMode = "home";
+
+// ---------------- USER PROFILE ----------------
+
+let userProfile = JSON.parse(
+    localStorage.getItem("youtubeBrowserProfile") ||
+    '{"searches":{},"channels":{},"watched":[]}'
+);
+
+// Save profile
+function saveProfile() {
+    localStorage.setItem(
+        "youtubeBrowserProfile",
+        JSON.stringify(userProfile)
+    );
+}
+
+// ---------------- LEARNING ALGORITHM ----------------
+
+function recordSearch(query) {
+
+    if (!query) return;
+
+    const words = query
+        .toLowerCase()
+        .split(/\s+/)
+        .filter(word => word.length > 2);
+
+    words.forEach(word => {
+        userProfile.searches[word] =
+            (userProfile.searches[word] || 0) + 1;
+    });
+
+    saveProfile();
+}
+
+
+// Record a video that the user watched
+function recordWatch(video) {
+
+    if (!video) return;
+
+    const videoId = video?.id?.videoId;
+    const snippet = video?.snippet;
+
+    if (!videoId || !snippet) return;
+
+    // Record channel preference
+    if (snippet.channelId) {
+        userProfile.channels[snippet.channelId] =
+            (userProfile.channels[snippet.channelId] || 0) + 1;
+    }
+
+    // Record video
+    userProfile.watched.unshift({
+        id: videoId,
+        title: snippet.title || "",
+        channelId: snippet.channelId || "",
+        channelTitle: snippet.channelTitle || "",
+        timestamp: Date.now()
+    });
+
+    // Keep only the most recent 100 watches
+    userProfile.watched =
+        userProfile.watched.slice(0, 100);
+
+    saveProfile();
+}
+
+
+// Get words the user likes
+function getInterestWords() {
+
+    return Object.entries(userProfile.searches)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 15)
+        .map(([word]) => word);
+}
+
+
+// Score a video
+function scoreVideo(video) {
+
+    const snippet = video?.snippet;
+
+    if (!snippet) return 0;
+
+    let score = 0;
+
+    const title =
+        (snippet.title || "").toLowerCase();
+
+    const description =
+        (snippet.description || "").toLowerCase();
+
+    const channelId =
+        snippet.channelId || "";
+
+    // ---------------- CHANNEL SCORE ----------------
+
+    const channelScore =
+        userProfile.channels[channelId] || 0;
+
+    score += channelScore * 10;
+
+
+    // ---------------- INTEREST WORDS ----------------
+
+    const interests = getInterestWords();
+
+    interests.forEach(word => {
+
+        if (title.includes(word)) {
+            score += 15;
+        }
+
+        if (description.includes(word)) {
+            score += 5;
+        }
+    });
+
+
+    // ---------------- FRESHNESS ----------------
+
+    const published =
+        new Date(snippet.publishedAt).getTime();
+
+    if (!isNaN(published)) {
+
+        const ageHours =
+            (Date.now() - published) / 3600000;
+
+        // Slight bonus for newer videos
+        if (ageHours < 24) {
+            score += 8;
+        } else if (ageHours < 72) {
+            score += 5;
+        } else if (ageHours < 168) {
+            score += 2;
+        }
+    }
+
+
+    // ---------------- ALREADY WATCHED ----------------
+
+    const watched =
+        userProfile.watched.some(
+            v => v.id === video?.id?.videoId
+        );
+
+    if (watched) {
+        score -= 30;
+    }
+
+
+    // ---------------- DISCOVERY ----------------
+
+    // Small random score prevents the feed
+    // from becoming exactly the same every time.
+    score += Math.random() * 12;
+
+    return score;
+}
+
+
+// Sort videos according to the user's interests
+function personalizeVideos(videos) {
+
+    return [...videos]
+        .sort((a, b) => {
+            return scoreVideo(b) - scoreVideo(a);
+        });
+}
+
 
 // ---------------- INIT ----------------
+
+els.homeBtn.addEventListener("click", () => {
+    loadHome();
+});
+
+
 els.searchBtn.addEventListener("click", () => {
-    lastQuery = els.query.value.trim();
+
+    lastQuery =
+        els.query.value.trim();
+
+    if (!lastQuery) {
+        loadHome();
+        return;
+    }
+
+    recordSearch(lastQuery);
+
     searchVideos();
 });
 
+
 els.query.addEventListener("keydown", e => {
+
     if (e.key === "Enter") {
-        lastQuery = els.query.value.trim();
+
+        lastQuery =
+            els.query.value.trim();
+
+        if (!lastQuery) {
+            loadHome();
+            return;
+        }
+
+        recordSearch(lastQuery);
+
         searchVideos();
     }
 });
 
+
 // ---------------- UTIL ----------------
+
 function escapeHtml(text = "") {
-    const div = document.createElement("div");
+
+    const div =
+        document.createElement("div");
+
     div.textContent = text;
+
     return div.innerHTML;
 }
+
 
 function setStatus(msg) {
     els.status.innerHTML = msg;
 }
 
+
 function clearResults() {
     els.results.innerHTML = "";
 }
+
 
 function clearPlayer() {
     els.player.innerHTML = "";
 }
 
-// ---------------- PLAYER (your style preserved) ----------------
-function loadVideo(videoId) {
+
+// ---------------- PLAYER ----------------
+
+function loadVideo(videoId, videoData = null) {
+
     if (!videoId) return;
 
+    // Learn from the video
+    if (videoData) {
+        recordWatch(videoData);
+    }
+
     els.player.innerHTML = `
-<div style="left: 0; width: 100%; height: 0; position: relative; padding-bottom: 56.25%;">
+<div style="
+    left: 0;
+    width: 100%;
+    height: 0;
+    position: relative;
+    padding-bottom: 56.25%;
+">
     <iframe
         src="https://www.youtube.com/embed/${videoId}?rel=0&autoplay=1"
-        style="top: 0; left: 0; width: 100%; height: 100%; position: absolute; border: 0;"
+        style="
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            border: 0;
+        "
         allowfullscreen
         scrolling="no"
-        allow="accelerometer *; clipboard-write *; encrypted-media *; gyroscope *; picture-in-picture *; web-share *;"
+        allow="
+            accelerometer *;
+            clipboard-write *;
+            encrypted-media *;
+            gyroscope *;
+            picture-in-picture *;
+            web-share *;
+        "
         referrerpolicy="strict-origin">
     </iframe>
 </div>
     `;
 
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    window.scrollTo({
+        top: 0,
+        behavior: "smooth"
+    });
 }
 
+
 // ---------------- API ----------------
+
 async function fetchJSON(url) {
-    const res = await fetch(url);
-    const data = await res.json();
+
+    const res =
+        await fetch(url);
+
+    const data =
+        await res.json();
 
     if (!res.ok) {
-        throw new Error(data?.error?.message || "API error");
+        throw new Error(
+            data?.error?.message ||
+            "API error"
+        );
     }
 
     return data;
 }
 
+
+// ---------------- HOME ALGORITHM ----------------
+
+async function loadHome() {
+
+    lastMode = "home";
+
+    els.homeBtn.classList.add("active");
+
+    setStatus(
+        '<div class="loading">Building your feed...</div>'
+    );
+
+    clearResults();
+    clearPlayer();
+
+    try {
+
+        /*
+         * We use several recommendation sources:
+         *
+         * 1. User's most searched topics
+         * 2. Channels they watch
+         * 3. General discovery
+         *
+         * Then we combine everything and score the results.
+         */
+
+        const interests =
+            getInterestWords();
+
+        const topChannels =
+            Object.entries(userProfile.channels)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 3)
+                .map(([id]) => id);
+
+
+        let requests = [];
+
+
+        // ---------------- INTEREST SEARCHES ----------------
+
+        if (interests.length > 0) {
+
+            const interestQuery =
+                interests.slice(0, 3).join(" ");
+
+            requests.push(
+                fetchJSON(
+                    `https://www.googleapis.com/youtube/v3/search` +
+                    `?part=snippet` +
+                    `&type=video` +
+                    `&maxResults=12` +
+                    `&q=${encodeURIComponent(interestQuery)}` +
+                    `&order=relevance` +
+                    `&key=${API_KEY}`
+                )
+            );
+        }
+
+
+        // ---------------- FAVORITE CHANNELS ----------------
+
+        for (const channelId of topChannels) {
+
+            requests.push(
+                fetchJSON(
+                    `https://www.googleapis.com/youtube/v3/search` +
+                    `?part=snippet` +
+                    `&channelId=${channelId}` +
+                    `&order=date` +
+                    `&type=video` +
+                    `&maxResults=8` +
+                    `&key=${API_KEY}`
+                )
+            );
+        }
+
+
+        // ---------------- DISCOVERY ----------------
+
+        requests.push(
+            fetchJSON(
+                `https://www.googleapis.com/youtube/v3/search` +
+                `?part=snippet` +
+                `&type=video` +
+                `&maxResults=12` +
+                `&order=date` +
+                `&q=trending` +
+                `&key=${API_KEY}`
+            )
+        );
+
+
+        const responses =
+            await Promise.all(requests);
+
+
+        // Combine all videos
+        let videos = [];
+
+        responses.forEach(data => {
+
+            if (Array.isArray(data.items)) {
+                videos.push(...data.items);
+            }
+
+        });
+
+
+        // Remove duplicate videos
+        const unique =
+            new Map();
+
+        videos.forEach(video => {
+
+            const id =
+                video?.id?.videoId;
+
+            if (id) {
+                unique.set(id, video);
+            }
+
+        });
+
+
+        videos =
+            Array.from(unique.values());
+
+
+        // Personalize feed
+        videos =
+            personalizeVideos(videos);
+
+
+        // Limit feed
+        videos =
+            videos.slice(0, 24);
+
+
+        if (videos.length === 0) {
+
+            renderHomeEmpty();
+
+        } else {
+
+            setStatus(
+                `<h2 class="home-title">
+                    ${interests.length
+                        ? "Recommended For You"
+                        : "Welcome to Home"}
+                </h2>`
+            );
+
+            render(videos);
+        }
+
+    } catch (err) {
+
+        console.error(err);
+
+        setStatus(
+            "<p>Error building your home feed.</p>"
+        );
+    }
+}
+
+
+// ---------------- EMPTY HOME ----------------
+
+function renderHomeEmpty() {
+
+    setStatus("");
+
+    els.results.innerHTML = `
+        <div class="empty-home">
+
+            <h2>Welcome!</h2>
+
+            <p>
+                Search for videos and watch some of them.
+                Your Home page will learn what you like.
+            </p>
+
+            <p>
+                The more you watch, the more personalized
+                your recommendations become.
+            </p>
+
+        </div>
+    `;
+}
+
+
 // ---------------- SEARCH ----------------
+
 async function searchVideos(pageToken = "") {
 
     lastMode = "search";
 
-    setStatus('<div class="loading">Searching...</div>');
+    els.homeBtn.classList.remove("active");
+
+    setStatus(
+        '<div class="loading">Searching...</div>'
+    );
+
     clearResults();
     clearPlayer();
 
@@ -201,36 +701,68 @@ async function searchVideos(pageToken = "") {
 
         let url =
             `https://www.googleapis.com/youtube/v3/search` +
-            `?part=snippet&type=video&maxResults=24` +
+            `?part=snippet` +
+            `&type=video` +
+            `&maxResults=24` +
             `&q=${encodeURIComponent(lastQuery)}` +
             `&key=${API_KEY}`;
 
-        if (pageToken) url += `&pageToken=${pageToken}`;
+        if (pageToken) {
+            url += `&pageToken=${pageToken}`;
+        }
 
-        const data = await fetchJSON(url);
+        const data =
+            await fetchJSON(url);
 
-        nextPageToken = data.nextPageToken || null;
-        prevPageToken = data.prevPageToken || null;
+        nextPageToken =
+            data.nextPageToken || null;
+
+        prevPageToken =
+            data.prevPageToken || null;
 
         render(data.items);
+
         renderPagination();
 
-        setStatus("");
+        setStatus(
+            `<h2>
+                Search results for:
+                "${escapeHtml(lastQuery)}"
+            </h2>`
+        );
 
     } catch (err) {
+
         console.error(err);
-        setStatus("<p>Error loading videos.</p>");
+
+        setStatus(
+            "<p>Error loading videos.</p>"
+        );
     }
 }
 
+
 // ---------------- CHANNEL ----------------
-async function loadChannel(channelId, channelName, pageToken = "") {
+
+async function loadChannel(
+    channelId,
+    channelName,
+    pageToken = ""
+) {
 
     lastMode = "channel";
+
+    els.homeBtn.classList.remove("active");
+
     lastChannelId = channelId;
     lastChannelName = channelName;
 
-    setStatus(`<div class="loading">Loading ${escapeHtml(channelName)}...</div>`);
+    setStatus(
+        `<div class="loading">
+            Loading ${escapeHtml(channelName)}...
+        </div>`
+    );
+
     clearResults();
     clearPlayer();
 
@@ -238,130 +770,285 @@ async function loadChannel(channelId, channelName, pageToken = "") {
 
         let url =
             `https://www.googleapis.com/youtube/v3/search` +
-            `?part=snippet&channelId=${channelId}` +
-            `&order=date&type=video&maxResults=24` +
+            `?part=snippet` +
+            `&channelId=${channelId}` +
+            `&order=date` +
+            `&type=video` +
+            `&maxResults=24` +
             `&key=${API_KEY}`;
 
-        if (pageToken) url += `&pageToken=${pageToken}`;
+        if (pageToken) {
+            url += `&pageToken=${pageToken}`;
+        }
 
-        const data = await fetchJSON(url);
+        const data =
+            await fetchJSON(url);
 
-        nextPageToken = data.nextPageToken || null;
-        prevPageToken = data.prevPageToken || null;
+        nextPageToken =
+            data.nextPageToken || null;
 
-        setStatus(`<h2>${escapeHtml(channelName)}</h2>`);
+        prevPageToken =
+            data.prevPageToken || null;
+
+        setStatus(
+            `<h2>${escapeHtml(channelName)}</h2>`
+        );
 
         render(data.items);
+
         renderPagination();
 
     } catch (err) {
+
         console.error(err);
-        setStatus("<p>Error loading channel.</p>");
+
+        setStatus(
+            "<p>Error loading channel.</p>"
+        );
     }
 }
 
-// ---------------- CARD RENDER ----------------
+
+// ---------------- CARD ----------------
+
 function createCard(video) {
 
-    const videoId = video?.id?.videoId;
+    const videoId =
+        video?.id?.videoId;
+
     if (!videoId) return null;
 
-    const s = video.snippet || {};
+    const s =
+        video.snippet || {};
 
-    const card = document.createElement("div");
-    card.className = "video-card";
+    const card =
+        document.createElement("div");
 
-    const img = document.createElement("img");
-    img.className = "thumbnail";
-    img.src = s.thumbnails?.high?.url || "";
-    img.addEventListener("click", () => loadVideo(videoId));
+    card.className =
+        "video-card";
 
-    const info = document.createElement("div");
-    info.className = "video-info";
 
-    const title = document.createElement("div");
-    title.className = "video-title";
-    title.textContent = s.title || "";
+    const img =
+        document.createElement("img");
 
-    const channel = document.createElement("div");
-    channel.className = "channel";
-    channel.textContent = s.channelTitle || "";
+    img.className =
+        "thumbnail";
 
-    channel.addEventListener("click", () => {
-        loadChannel(s.channelId, s.channelTitle);
-    });
+    img.src =
+        s.thumbnails?.high?.url || "";
 
-    const btn = document.createElement("button");
-    btn.className = "watch-btn";
-    btn.textContent = "Watch Here";
-    btn.addEventListener("click", () => loadVideo(videoId));
+    img.alt =
+        s.title || "YouTube video";
 
-    info.append(title, channel, btn);
-    card.append(img, info);
+    img.addEventListener(
+        "click",
+        () => loadVideo(videoId, video)
+    );
+
+
+    const info =
+        document.createElement("div");
+
+    info.className =
+        "video-info";
+
+
+    const title =
+        document.createElement("div");
+
+    title.className =
+        "video-title";
+
+    title.textContent =
+        s.title || "";
+
+
+    const channel =
+        document.createElement("div");
+
+    channel.className =
+        "channel";
+
+    channel.textContent =
+        s.channelTitle || "";
+
+
+    channel.addEventListener(
+        "click",
+        () => {
+            loadChannel(
+                s.channelId,
+                s.channelTitle
+            );
+        }
+    );
+
+
+    const btn =
+        document.createElement("button");
+
+    btn.className =
+        "watch-btn";
+
+    btn.textContent =
+        "Watch Here";
+
+
+    btn.addEventListener(
+        "click",
+        () => loadVideo(videoId, video)
+    );
+
+
+    info.append(
+        title,
+        channel,
+        btn
+    );
+
+    card.append(
+        img,
+        info
+    );
 
     return card;
 }
 
+
 // ---------------- RENDER ----------------
+
 function render(items = []) {
 
     clearResults();
 
-    if (!Array.isArray(items) || items.length === 0) {
-        els.results.innerHTML = "<p>No videos found.</p>";
+    if (
+        !Array.isArray(items) ||
+        items.length === 0
+    ) {
+
+        els.results.innerHTML =
+            "<p>No videos found.</p>";
+
         return;
     }
 
-    const frag = document.createDocumentFragment();
 
-    items.forEach(v => {
-        const card = createCard(v);
-        if (card) frag.appendChild(card);
+    const frag =
+        document.createDocumentFragment();
+
+
+    items.forEach(video => {
+
+        const card =
+            createCard(video);
+
+        if (card) {
+            frag.appendChild(card);
+        }
+
     });
+
 
     els.results.appendChild(frag);
 }
 
+
 // ---------------- PAGINATION ----------------
+
 function renderPagination() {
 
-    const div = document.createElement("div");
-    div.style.textAlign = "center";
-    div.style.marginTop = "20px";
+    const div =
+        document.createElement("div");
+
+    div.style.gridColumn =
+        "1 / -1";
+
+    div.style.textAlign =
+        "center";
+
+    div.style.marginTop =
+        "20px";
+
 
     if (prevPageToken) {
-        const prev = document.createElement("button");
-        prev.textContent = "⬅ Prev";
+
+        const prev =
+            document.createElement("button");
+
+        prev.textContent =
+            "⬅ Prev";
+
 
         prev.onclick = () => {
+
             if (lastMode === "search") {
-                searchVideos(prevPageToken);
-            } else {
-                loadChannel(lastChannelId, lastChannelName, prevPageToken);
+
+                searchVideos(
+                    prevPageToken
+                );
+
+            } else if (
+                lastMode === "channel"
+            ) {
+
+                loadChannel(
+                    lastChannelId,
+                    lastChannelName,
+                    prevPageToken
+                );
             }
         };
+
 
         div.appendChild(prev);
     }
 
+
     if (nextPageToken) {
-        const next = document.createElement("button");
-        next.textContent = "Next ➡";
-        next.style.marginLeft = "10px";
+
+        const next =
+            document.createElement("button");
+
+        next.textContent =
+            "Next ➡";
+
+        next.style.marginLeft =
+            "10px";
+
 
         next.onclick = () => {
+
             if (lastMode === "search") {
-                searchVideos(nextPageToken);
-            } else {
-                loadChannel(lastChannelId, lastChannelName, nextPageToken);
+
+                searchVideos(
+                    nextPageToken
+                );
+
+            } else if (
+                lastMode === "channel"
+            ) {
+
+                loadChannel(
+                    lastChannelId,
+                    lastChannelName,
+                    nextPageToken
+                );
             }
         };
+
 
         div.appendChild(next);
     }
 
+
     els.results.appendChild(div);
 }
+
+
+// ---------------- START ----------------
+
+loadHome();
+
 </script>
 
 </body>
