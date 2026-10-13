@@ -1,1 +1,1 @@
-Needs Safari to Work
+Follow guide in release
