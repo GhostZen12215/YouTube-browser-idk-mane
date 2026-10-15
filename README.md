@@ -1,1 +1,1 @@
-Follow guide in release
+Needs an API key from Google Cloud.
