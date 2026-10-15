@@ -7,6 +7,9 @@
 <title>YouTube Browser V9</title>
 
 <style>
+/* =========================================================
+   THEME
+========================================================= */
 
 :root {
     --bg: #f7f7f8;
@@ -32,6 +35,10 @@ body.dark {
     --sidebar: #151517;
     --shadow: 0 8px 30px rgba(0,0,0,.3);
 }
+
+/* =========================================================
+   GLOBAL
+========================================================= */
 
 * {
     box-sizing: border-box;
@@ -75,9 +82,17 @@ input:focus-visible {
     outline-offset: 2px;
 }
 
+/* =========================================================
+   APP
+========================================================= */
+
 .app {
     min-height: 100vh;
 }
+
+/* =========================================================
+   HEADER
+========================================================= */
 
 .header {
     position: sticky;
@@ -243,6 +258,10 @@ input:focus-visible {
     background: var(--surface-2);
 }
 
+/* =========================================================
+   SIDEBAR
+========================================================= */
+
 .sidebar {
     position: fixed;
     top: 70px;
@@ -324,12 +343,20 @@ input:focus-visible {
     text-align: center;
 }
 
+/* =========================================================
+   MAIN
+========================================================= */
+
 .main {
     margin-left: 235px;
     padding: 30px;
 
     max-width: 1700px;
 }
+
+/* =========================================================
+   PAGE TOOLBAR
+========================================================= */
 
 .page-toolbar {
     display: flex;
@@ -380,6 +407,10 @@ input:focus-visible {
 .small-btn.danger {
     color: var(--accent);
 }
+
+/* =========================================================
+   PLAYER
+========================================================= */
 
 .player-wrapper {
     max-width: 1100px;
@@ -442,6 +473,10 @@ input:focus-visible {
 
     margin-top: 4px;
 }
+
+/* =========================================================
+   VIDEO GRID
+========================================================= */
 
 #results {
     display: grid;
@@ -621,6 +656,10 @@ input:focus-visible {
     border-radius: 9px;
 }
 
+/* =========================================================
+   EMPTY STATE
+========================================================= */
+
 .empty {
     grid-column: 1 / -1;
 
@@ -654,6 +693,10 @@ input:focus-visible {
     line-height: 1.6;
 }
 
+/* =========================================================
+   LOADING
+========================================================= */
+
 .loading {
     grid-column: 1 / -1;
 
@@ -686,6 +729,10 @@ input:focus-visible {
     }
 }
 
+/* =========================================================
+   PAGINATION
+========================================================= */
+
 .pagination {
     grid-column: 1 / -1;
 
@@ -712,6 +759,10 @@ input:focus-visible {
 .pagination button:hover {
     background: var(--surface-2);
 }
+
+/* =========================================================
+   TOAST
+========================================================= */
 
 .toast {
     position: fixed;
@@ -747,6 +798,10 @@ input:focus-visible {
     transform: translateY(0);
 }
 
+/* =========================================================
+   BACK TO TOP
+========================================================= */
+
 #backTop {
     position: fixed;
 
@@ -770,6 +825,10 @@ input:focus-visible {
 
     z-index: 80;
 }
+
+/* =========================================================
+   MOBILE
+========================================================= */
 
 @media (max-width: 900px) {
 
@@ -869,6 +928,37 @@ input:focus-visible {
         display: none;
     }
 }
+
+
+/* API KEY SETTINGS */
+.api-modal-backdrop {
+    position: fixed; inset: 0; z-index: 1000;
+    display: none; align-items: center; justify-content: center;
+    padding: 20px; background: rgba(0,0,0,.62);
+}
+.api-modal-backdrop.open { display: flex; }
+.api-modal {
+    width: min(100%, 520px); padding: 24px;
+    color: var(--text); background: var(--surface);
+    border: 1px solid var(--border); border-radius: 18px;
+    box-shadow: var(--shadow);
+}
+.api-modal h2 { margin: 0 0 8px; }
+.api-modal p { color: var(--muted); line-height: 1.5; }
+.api-modal input {
+    width: 100%; padding: 12px 14px; margin: 8px 0 12px;
+    color: var(--text); background: var(--surface-2);
+    border: 1px solid var(--border); border-radius: 10px;
+}
+.api-modal-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+.api-modal-actions button {
+    border: 0; border-radius: 10px; padding: 11px 14px;
+    background: var(--accent); color: white; font-weight: 700;
+}
+.api-modal-actions .secondary { background: var(--surface-2); color: var(--text); }
+.api-settings-btn { border-radius: 999px; padding: 9px 12px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); }
+.api-help { font-size: 13px; }
+
 </style>
 </head>
 
@@ -915,6 +1005,8 @@ input:focus-visible {
         </div>
 
         <div class="header-actions">
+
+            <button id="apiKeyBtn" class="api-settings-btn" type="button" title="Set or change your API key">🔑 API Key</button>
 
             <button
                 id="themeBtn"
@@ -1061,15 +1153,34 @@ input:focus-visible {
 
 <div id="toast" class="toast"></div>
 
+<div id="apiKeyModal" class="api-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="apiKeyHeading">
+  <div class="api-modal">
+    <h2 id="apiKeyHeading">Your YouTube API key</h2>
+    <p>Enter your own YouTube Data API v3 key to use search and feed features. The key is saved only in this browser's local storage. Anyone using this browser profile can inspect it, so use a key restricted in Google Cloud Console.</p>
+    <label for="apiKeyInput"><strong>API key</strong></label>
+    <input id="apiKeyInput" type="password" autocomplete="off" placeholder="Paste your API key here" />
+    <label><input id="showApiKey" type="checkbox" style="width:auto;margin-right:6px;" />Show key</label>
+    <div class="api-modal-actions">
+      <button id="saveApiKeyBtn" type="button">Save key</button>
+      <button id="removeApiKeyBtn" class="secondary" type="button">Remove key</button>
+      <button id="closeApiKeyBtn" class="secondary" type="button">Close</button>
+    </div>
+    <p class="api-help">Need a key? Create one in <a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer">Google Cloud Console</a>, enable YouTube Data API v3, and restrict the key appropriately.</p>
+  </div>
+</div>
 
 <script>
 
 /* =========================================================
-   REPLACE API KEY WITH YOUR OWN
+   CONFIG
 ========================================================= */
 
-const API_KEY =
-    "Replace with your own YouTube Data API v3 key from https://console.cloud.google.com/apis/credentials";
+let API_KEY = localStorage.getItem("youtubeBrowserApiKey") || "";
+
+
+/* =========================================================
+   DOM
+========================================================= */
 
 const els = {
 
@@ -1102,6 +1213,14 @@ const els = {
 
     themeBtn:
         document.getElementById("themeBtn"),
+
+    apiKeyBtn: document.getElementById("apiKeyBtn"),
+    apiKeyModal: document.getElementById("apiKeyModal"),
+    apiKeyInput: document.getElementById("apiKeyInput"),
+    showApiKey: document.getElementById("showApiKey"),
+    saveApiKeyBtn: document.getElementById("saveApiKeyBtn"),
+    removeApiKeyBtn: document.getElementById("removeApiKeyBtn"),
+    closeApiKeyBtn: document.getElementById("closeApiKeyBtn"),
 
     results:
         document.getElementById("results"),
@@ -2243,6 +2362,12 @@ function renderPagination() {
 
 async function loadHome() {
 
+    if (!API_KEY) {
+        openApiKeyModal();
+        els.results.innerHTML = '<div class="empty-state">Add your YouTube API key using the 🔑 API Key button to load videos.</div>';
+        return;
+    }
+
     lastMode =
         "home";
 
@@ -3063,6 +3188,50 @@ els.backTop.addEventListener(
     }
 );
 
+
+/* =========================================================
+   API KEY SETTINGS
+========================================================= */
+
+function openApiKeyModal() {
+    els.apiKeyInput.value = API_KEY;
+    els.apiKeyModal.classList.add("open");
+    els.apiKeyInput.focus();
+}
+
+function closeApiKeyModal() {
+    els.apiKeyModal.classList.remove("open");
+}
+
+els.apiKeyBtn.addEventListener("click", openApiKeyModal);
+els.closeApiKeyBtn.addEventListener("click", closeApiKeyModal);
+els.apiKeyModal.addEventListener("click", event => {
+    if (event.target === els.apiKeyModal) closeApiKeyModal();
+});
+els.showApiKey.addEventListener("change", () => {
+    els.apiKeyInput.type = els.showApiKey.checked ? "text" : "password";
+});
+els.saveApiKeyBtn.addEventListener("click", () => {
+    const newKey = els.apiKeyInput.value.trim();
+    if (!newKey) {
+        toast("Paste an API key first");
+        els.apiKeyInput.focus();
+        return;
+    }
+    API_KEY = newKey;
+    localStorage.setItem("youtubeBrowserApiKey", API_KEY);
+    closeApiKeyModal();
+    toast("API key saved in this browser");
+    loadHome();
+});
+els.removeApiKeyBtn.addEventListener("click", () => {
+    API_KEY = "";
+    localStorage.removeItem("youtubeBrowserApiKey");
+    els.apiKeyInput.value = "";
+    closeApiKeyModal();
+    els.results.innerHTML = '<div class="empty-state">API key removed. Add a key to search and load videos.</div>';
+    toast("API key removed");
+});
 
 /* =========================================================
    INIT
